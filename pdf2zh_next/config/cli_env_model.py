@@ -76,7 +76,6 @@ __cli_env_settings_model_fields = {
             default_factory=v.default_factory,
             alias=v.alias,
             discriminator=v.discriminator,
-            json_schema_extra=v.json_schema_extra,
         ),
     )
     for k, v in SettingsModel.model_fields.items()

@@ -116,32 +116,14 @@ def build_args_parser(
 
             for arg in args:
                 if arg is bool:
-                    cli_extra = (field_detail.json_schema_extra or {}).get("cli", {})
-                    if cli_extra.get("negative_flag"):
-                        group = parser.add_mutually_exclusive_group()
-                        group.add_argument(
-                            f"--{args_name}",
-                            dest=field_name,
-                            action="store_true",
-                            default=MagicDefault,
-                            help=field_detail.description,
-                        )
-                        group.add_argument(
-                            f"--no-{args_name}",
-                            dest=field_name,
-                            action="store_false",
-                            default=MagicDefault,
-                            help=f"Disable {field_detail.description}",
-                        )
-                    else:
-                        parser.add_argument(
-                            f"--{args_name}",
-                            action="store_true"
-                            if field_detail.default is False
-                            else "store_false",
-                            default=MagicDefault,
-                            help=field_detail.description,
-                        )
+                    parser.add_argument(
+                        f"--{args_name}",
+                        action="store_true"
+                        if field_detail.default is False
+                        else "store_false",
+                        default=MagicDefault,
+                        help=field_detail.description,
+                    )
                 elif arg == NoneType:
                     continue
                 else:

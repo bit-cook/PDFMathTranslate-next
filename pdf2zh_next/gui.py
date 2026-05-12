@@ -2624,21 +2624,12 @@ with gr.Blocks(
                                                 visible=field_visible,
                                             )
                                     elif type_hint is bool or bool in type_args:
-                                        if gui_extra.get("widget") == "radio":
-                                            field_input = gr.Radio(
-                                                label=_(gui_extra.get("label", field.description)),
-                                                choices=gui_extra["choices"],
-                                                value=bool(value),
-                                                interactive=True,
-                                                visible=field_visible,
-                                            )
-                                        else:
-                                            field_input = gr.Checkbox(
-                                                label=field.description,
-                                                value=value,
-                                                interactive=True,
-                                                visible=field_visible,
-                                            )
+                                        field_input = gr.Checkbox(
+                                            label=field.description,
+                                            value=value,
+                                            interactive=True,
+                                            visible=field_visible,
+                                        )
                                     else:
                                         raise Exception(
                                             f"Unsupported type {type_hint} for field {field_name} in gui translation engine settings"
@@ -2856,25 +2847,12 @@ with gr.Blocks(
                                                     visible=field_visible,
                                                 )
                                         elif type_hint is bool or bool in type_args:
-                                            if gui_extra.get("widget") == "radio":
-                                                field_input = gr.Radio(
-                                                    label=_(
-                                                        gui_extra.get(
-                                                            "label", field.description
-                                                        )
-                                                    ),
-                                                    choices=gui_extra["choices"],
-                                                    value=bool(value),
-                                                    interactive=True,
-                                                    visible=field_visible,
-                                                )
-                                            else:
-                                                field_input = gr.Checkbox(
-                                                    label=field.description,
-                                                    value=value,
-                                                    interactive=True,
-                                                    visible=field_visible,
-                                                )
+                                            field_input = gr.Checkbox(
+                                                label=field.description,
+                                                value=value,
+                                                interactive=True,
+                                                visible=field_visible,
+                                            )
                                         else:
                                             raise Exception(
                                                 f"Unsupported type {type_hint} for field {field_name} in gui term extraction engine settings"
