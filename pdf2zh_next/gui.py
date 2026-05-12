@@ -59,30 +59,49 @@ def get_translation_dic(file_path: Path):
 __gui_service_arg_names = []
 __gui_term_service_arg_names = []
 LLM_support_index_map = {}
-DEEPSEEK_THINKING_CHOICES = [
-    ("Disabled (non-thinking)", False),
-    ("Enabled (thinking)", True),
-]
 
 
-def _deepseek_reasoning_effort_update(
-    visible: bool,
-    current_value: str | None = None,
-):
-    return gr.update(
-        choices=["high", "max"],
-        value=current_value or "high",
-        visible=visible,
+def _field_gui_extra(field) -> dict:
+    return (field.json_schema_extra or {}).get("gui", {})
+
+
+def _gui_dependency_field_name(field_name: str, dependency_field_name: str) -> str:
+    if field_name.startswith("term_") and not dependency_field_name.startswith("term_"):
+        return f"term_{dependency_field_name}"
+    return dependency_field_name
+
+
+def _gui_field_visible(
+    field_name: str,
+    field,
+    base_visible: bool,
+    field_values: dict[str, typing.Any],
+) -> bool:
+    gui_extra = _field_gui_extra(field)
+    visible_when = gui_extra.get("visible_when")
+    if not visible_when:
+        return base_visible
+    dependency_field_name = _gui_dependency_field_name(
+        field_name, visible_when["field"]
     )
+    return base_visible and field_values.get(dependency_field_name) == visible_when["equals"]
 
 
-def _deepseek_detail_update(field_name: str, visible: bool):
-    if field_name in {
-        "deepseek_reasoning_effort",
-        "term_deepseek_reasoning_effort",
-    }:
-        return _deepseek_reasoning_effort_update(visible=visible)
-    return gr.update(visible=visible)
+def _gui_field_value(field, value):
+    gui_extra = _field_gui_extra(field)
+    if value:
+        return value
+    return gui_extra.get("default_on_show", value)
+
+
+def _gui_field_update(field, visible: bool, current_value=None):
+    gui_extra = _field_gui_extra(field)
+    update_kwargs = {"visible": visible}
+    if "choices" in gui_extra:
+        update_kwargs["choices"] = gui_extra["choices"]
+    if "default_on_show" in gui_extra or gui_extra.get("preserve_current_value"):
+        update_kwargs["value"] = _gui_field_value(field, current_value)
+    return gr.update(**update_kwargs)
 
 
 # The following variables associate strings with specific languages
@@ -2378,15 +2397,17 @@ with gr.Blocks(
         translation_engine_arg_inputs = []
         detail_text_inputs = []
         detail_text_input_field_names = []
+        detail_text_input_fields = []
+        detail_visibility_dependency_inputs = {}
+        detail_visibility_dependency_events = []
         require_llm_translator_inputs = []
         detail_text_input_index_map = {}
         term_detail_text_inputs = []
         term_detail_text_input_field_names = []
+        term_detail_text_input_fields = []
+        term_detail_visibility_dependency_inputs = {}
+        term_detail_visibility_dependency_events = []
         term_detail_text_input_index_map = {}
-        deepseek_thinking_enabled_input = None
-        deepseek_reasoning_effort_input = None
-        term_deepseek_thinking_enabled_input = None
-        term_deepseek_reasoning_effort_input = None
         LLM_support_index_map.clear()
         with gr.Row(elem_classes=["tab-main-row"], equal_height=True):
             # 左侧侧边栏
@@ -2562,18 +2583,25 @@ with gr.Blocks(
                                     original_type = typing.get_origin(type_hint)
                                     type_args = typing.get_args(type_hint)
                                     value = getattr(detail_settings, field_name)
-                                    if field_name == "deepseek_reasoning_effort":
+                                    gui_extra = _field_gui_extra(field)
+                                    field_values = {
+                                        name: getattr(detail_settings, name)
+                                        for name in metadata.setting_model_type.model_fields
+                                    }
+                                    field_visible = _gui_field_visible(
+                                        field_name,
+                                        field,
+                                        visible,
+                                        field_values,
+                                    )
+                                    if gui_extra.get("widget") == "dropdown":
                                         field_input = gr.Dropdown(
                                             label=field.description,
-                                            choices=["high", "max"],
-                                            value=value or "high",
+                                            choices=gui_extra["choices"],
+                                            value=_gui_field_value(field, value),
                                             interactive=True,
-                                            visible=visible
-                                            and bool(
-                                                detail_settings.deepseek_thinking_enabled
-                                            ),
+                                            visible=field_visible,
                                         )
-                                        deepseek_reasoning_effort_input = field_input
                                     elif (
                                         type_hint is str
                                         or str in type_args
@@ -2586,31 +2614,30 @@ with gr.Blocks(
                                                 value=value,
                                                 interactive=True,
                                                 type="password",
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
                                         else:
                                             field_input = gr.Textbox(
                                                 label=field.description,
                                                 value=value,
                                                 interactive=True,
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
                                     elif type_hint is bool or bool in type_args:
-                                        if field_name == "deepseek_thinking_enabled":
+                                        if gui_extra.get("widget") == "radio":
                                             field_input = gr.Radio(
-                                                label=_("DeepSeek thinking mode"),
-                                                choices=DEEPSEEK_THINKING_CHOICES,
+                                                label=_(gui_extra.get("label", field.description)),
+                                                choices=gui_extra["choices"],
                                                 value=bool(value),
                                                 interactive=True,
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
-                                            deepseek_thinking_enabled_input = field_input
                                         else:
                                             field_input = gr.Checkbox(
                                                 label=field.description,
                                                 value=value,
                                                 interactive=True,
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
                                     else:
                                         raise Exception(
@@ -2622,6 +2649,28 @@ with gr.Blocks(
                                     detail_index += 1
                                     detail_text_inputs.append(field_input)
                                     detail_text_input_field_names.append(field_name)
+                                    detail_text_input_fields.append(field)
+                                    visible_when = gui_extra.get("visible_when")
+                                    if visible_when:
+                                        dependency_field_name = _gui_dependency_field_name(
+                                            field_name, visible_when["field"]
+                                        )
+                                        dependency_input = (
+                                            detail_visibility_dependency_inputs.get(
+                                                dependency_field_name
+                                            )
+                                        )
+                                        if dependency_input is not None:
+                                            detail_visibility_dependency_events.append(
+                                                (
+                                                    metadata.translate_engine_type,
+                                                    field_name,
+                                                    field,
+                                                    dependency_input,
+                                                    field_input,
+                                                )
+                                            )
+                                    detail_visibility_dependency_inputs[field_name] = field_input
                                     __gui_service_arg_names.append(field_name)
                                     translation_engine_arg_inputs.append(field_input)
                     with gr.Group() as rate_limit_settings:
@@ -2765,17 +2814,25 @@ with gr.Blocks(
                                         original_type = typing.get_origin(type_hint)
                                         type_args = typing.get_args(type_hint)
                                         value = getattr(term_detail_settings, field_name)
+                                        gui_extra = _field_gui_extra(field)
+                                        term_field_values = {
+                                            name: getattr(term_detail_settings, name)
+                                            for name in term_metadata.term_setting_model_type.model_fields
+                                        }
+                                        field_visible = _gui_field_visible(
+                                            field_name,
+                                            field,
+                                            False,
+                                            term_field_values,
+                                        )
 
-                                        if field_name == "term_deepseek_reasoning_effort":
+                                        if gui_extra.get("widget") == "dropdown":
                                             field_input = gr.Dropdown(
                                                 label=field.description,
-                                                choices=["high", "max"],
-                                                value=value or "high",
+                                                choices=gui_extra["choices"],
+                                                value=_gui_field_value(field, value),
                                                 interactive=True,
-                                                visible=False,
-                                            )
-                                            term_deepseek_reasoning_effort_input = (
-                                                field_input
+                                                visible=field_visible,
                                             )
                                         elif (
                                             type_hint is str
@@ -2789,33 +2846,34 @@ with gr.Blocks(
                                                     value=value,
                                                     interactive=True,
                                                     type="password",
-                                                    visible=False,
+                                                    visible=field_visible,
                                                 )
                                             else:
                                                 field_input = gr.Textbox(
                                                     label=field.description,
                                                     value=value,
                                                     interactive=True,
-                                                    visible=False,
+                                                    visible=field_visible,
                                                 )
                                         elif type_hint is bool or bool in type_args:
-                                            if field_name == "term_deepseek_thinking_enabled":
+                                            if gui_extra.get("widget") == "radio":
                                                 field_input = gr.Radio(
-                                                    label=_("DeepSeek thinking mode"),
-                                                    choices=DEEPSEEK_THINKING_CHOICES,
+                                                    label=_(
+                                                        gui_extra.get(
+                                                            "label", field.description
+                                                        )
+                                                    ),
+                                                    choices=gui_extra["choices"],
                                                     value=bool(value),
                                                     interactive=True,
-                                                    visible=False,
-                                                )
-                                                term_deepseek_thinking_enabled_input = (
-                                                    field_input
+                                                    visible=field_visible,
                                                 )
                                             else:
                                                 field_input = gr.Checkbox(
                                                     label=field.description,
                                                     value=value,
                                                     interactive=True,
-                                                    visible=False,
+                                                    visible=field_visible,
                                                 )
                                         else:
                                             raise Exception(
@@ -2828,6 +2886,28 @@ with gr.Blocks(
                                         term_detail_index += 1
                                         term_detail_text_inputs.append(field_input)
                                         term_detail_text_input_field_names.append(field_name)
+                                        term_detail_text_input_fields.append(field)
+                                        visible_when = gui_extra.get("visible_when")
+                                        if visible_when:
+                                            dependency_field_name = _gui_dependency_field_name(
+                                                field_name, visible_when["field"]
+                                            )
+                                            dependency_input = (
+                                                term_detail_visibility_dependency_inputs.get(
+                                                    dependency_field_name
+                                                )
+                                            )
+                                            if dependency_input is not None:
+                                                term_detail_visibility_dependency_events.append(
+                                                    (
+                                                        term_metadata.translate_engine_type,
+                                                        field_name,
+                                                        field,
+                                                        dependency_input,
+                                                        field_input,
+                                                    )
+                                                )
+                                        term_detail_visibility_dependency_inputs[field_name] = field_input
                                         __gui_term_service_arg_names.append(field_name)
                                         translation_engine_arg_inputs.append(field_input)
 
@@ -3214,11 +3294,14 @@ with gr.Blocks(
             """Update page input visibility based on selection"""
             return gr.update(visible=choice == "Range")
 
-        def on_select_service(service_name, deepseek_thinking_enabled=False):
+        def on_select_service(service_name, *detail_values):
             """Update service-specific settings visibility"""
             if not detail_text_inputs:
                 return
             detail_group_index = detail_text_input_index_map.get(service_name, [])
+            detail_field_values = dict(
+                zip(detail_text_input_field_names, detail_values, strict=False)
+            )
             llm_support = LLM_support_index_map.get(service_name, False)
             siliconflow_free_acknowledgement_visible = service_name == "SiliconFlowFree"
             siliconflow_update = [
@@ -3240,35 +3323,42 @@ with gr.Blocks(
                     siliconflow_update
                     + glossary_updates
                     + [
-                            _deepseek_detail_update(
+                        _gui_field_update(
+                            detail_text_input_fields[i],
+                            _gui_field_visible(
                                 detail_text_input_field_names[i],
-                                (i in detail_group_index)
-                                and (
-                                    detail_text_input_field_names[i]
-                                    != "deepseek_reasoning_effort"
-                                    or bool(deepseek_thinking_enabled)
-                                ),
-                            )
+                                detail_text_input_fields[i],
+                                i in detail_group_index,
+                                detail_field_values,
+                            ),
+                            current_value=detail_field_values.get(
+                                detail_text_input_field_names[i]
+                            ),
+                        )
                         for i in range(len(detail_text_inputs))
                     ]
                 )
             return return_list
 
-        def on_deepseek_thinking_enabled_change(
-            enabled, service_name, deepseek_reasoning_effort
-        ):
-            return _deepseek_reasoning_effort_update(
-                visible=enabled and service_name == "DeepSeek",
-                current_value=deepseek_reasoning_effort,
-            )
+        def make_detail_dependency_change_handler(service_type, field_name, field):
+            def on_dependency_change(dependency_value, service_name, current_value):
+                return _gui_field_update(
+                    field,
+                    _gui_field_visible(
+                        field_name,
+                        field,
+                        service_name == service_type,
+                        {
+                            _gui_dependency_field_name(
+                                field_name,
+                                _field_gui_extra(field)["visible_when"]["field"],
+                            ): dependency_value
+                        },
+                    ),
+                    current_value=current_value,
+                )
 
-        def on_term_deepseek_thinking_enabled_change(
-            enabled, term_service_name, term_deepseek_reasoning_effort
-        ):
-            return _deepseek_reasoning_effort_update(
-                visible=enabled and term_service_name == "DeepSeek",
-                current_value=term_deepseek_reasoning_effort,
-            )
+            return on_dependency_change
 
         def on_enhance_compatibility_change(enhance_value):
             """Update skip_clean and disable_rich_text_translate when enhance_compatibility changes"""
@@ -3340,35 +3430,41 @@ with gr.Blocks(
                 gr.update(visible=custom_visible),
             ]
 
-        def on_term_service_change(
-            term_service_name: str, term_deepseek_thinking_enabled=False
-        ):
+        def on_term_service_change(term_service_name: str, *term_detail_values):
             """Update term engine-specific settings visibility"""
             if not term_detail_text_inputs:
                 return
             detail_group_index = term_detail_text_input_index_map.get(
                 term_service_name, []
             )
+            term_detail_field_values = dict(
+                zip(
+                    term_detail_text_input_field_names,
+                    term_detail_values,
+                    strict=False,
+                )
+            )
             if len(term_detail_text_inputs) == 1:
                 return [gr.update(visible=(0 in detail_group_index))]
             return [
-                _deepseek_detail_update(
-                    term_detail_text_input_field_names[i],
-                    (i in detail_group_index)
-                    and (
+                _gui_field_update(
+                    term_detail_text_input_fields[i],
+                    _gui_field_visible(
+                        term_detail_text_input_field_names[i],
+                        term_detail_text_input_fields[i],
+                        i in detail_group_index,
+                        term_detail_field_values,
+                    ),
+                    current_value=term_detail_field_values.get(
                         term_detail_text_input_field_names[i]
-                        != "term_deepseek_reasoning_effort"
-                        or bool(term_deepseek_thinking_enabled)
                     ),
                 )
                 for i in range(len(term_detail_text_inputs))
             ]
 
-        def on_service_change_with_rate_limit(
-            mode, service_name, deepseek_thinking_enabled=False
-        ):
+        def on_service_change_with_rate_limit(mode, service_name, *detail_values):
             """Expand original on_select_service with rate-limit-UI updated"""
-            original_updates = on_select_service(service_name, deepseek_thinking_enabled)
+            original_updates = on_select_service(service_name, *detail_values)
 
             rate_limit_visible = service_name != "SiliconFlowFree"
 
@@ -3470,7 +3566,7 @@ with gr.Blocks(
 
         service.select(
             on_service_change_with_rate_limit,
-            [rate_limit_mode, service, deepseek_thinking_enabled_input],
+            [rate_limit_mode, service] + detail_text_inputs,
             outputs=(
                 on_select_service_outputs
                 if len(on_select_service_outputs) > 0
@@ -3538,35 +3634,44 @@ with gr.Blocks(
         # Term service change handler
         term_service.change(
             on_term_service_change,
-            [term_service, term_deepseek_thinking_enabled_input],
+            [term_service] + term_detail_text_inputs,
             outputs=(
                 term_detail_text_inputs if len(term_detail_text_inputs) > 0 else None
             ),
         )
 
-        if deepseek_thinking_enabled_input and deepseek_reasoning_effort_input:
-            deepseek_thinking_enabled_input.change(
-                on_deepseek_thinking_enabled_change,
+        for (
+            service_type,
+            field_name,
+            field,
+            dependency_input,
+            dependent_input,
+        ) in detail_visibility_dependency_events:
+            dependency_input.change(
+                make_detail_dependency_change_handler(service_type, field_name, field),
                 [
-                    deepseek_thinking_enabled_input,
+                    dependency_input,
                     service,
-                    deepseek_reasoning_effort_input,
+                    dependent_input,
                 ],
-                deepseek_reasoning_effort_input,
+                dependent_input,
             )
 
-        if (
-            term_deepseek_thinking_enabled_input
-            and term_deepseek_reasoning_effort_input
-        ):
-            term_deepseek_thinking_enabled_input.change(
-                on_term_deepseek_thinking_enabled_change,
+        for (
+            service_type,
+            field_name,
+            field,
+            dependency_input,
+            dependent_input,
+        ) in term_detail_visibility_dependency_events:
+            dependency_input.change(
+                make_detail_dependency_change_handler(service_type, field_name, field),
                 [
-                    term_deepseek_thinking_enabled_input,
+                    dependency_input,
                     term_service,
-                    term_deepseek_reasoning_effort_input,
+                    dependent_input,
                 ],
-                term_deepseek_reasoning_effort_input,
+                dependent_input,
             )
 
         # UI setting controls list (shared by translate_btn and save_btn)
@@ -3952,12 +4057,17 @@ with gr.Blocks(
                         ):
                             continue
                         value = getattr(detail_settings, field_name)
-                        visible = metadata.translate_engine_type == selected_service
-                        if field_name == "deepseek_reasoning_effort":
-                            visible = visible and bool(
-                                detail_settings.deepseek_thinking_enabled
-                            )
-                            value = value or "high"
+                        field_values = {
+                            name: getattr(detail_settings, name)
+                            for name in metadata.setting_model_type.model_fields
+                        }
+                        visible = _gui_field_visible(
+                            field_name,
+                            field,
+                            metadata.translate_engine_type == selected_service,
+                            field_values,
+                        )
+                        value = _gui_field_value(field, value)
                         updates.append(gr.update(value=value, visible=visible))
 
                 # Term extraction engine detail fields (ordered)
@@ -3989,14 +4099,17 @@ with gr.Blocks(
                             if base_name in GUI_PASSWORD_FIELDS:
                                 continue
                         value = getattr(term_detail_settings, field_name)
-                        visible = (
-                            term_metadata.translate_engine_type == selected_term_service
+                        term_field_values = {
+                            name: getattr(term_detail_settings, name)
+                            for name in term_metadata.term_setting_model_type.model_fields
+                        }
+                        visible = _gui_field_visible(
+                            field_name,
+                            field,
+                            term_metadata.translate_engine_type == selected_term_service,
+                            term_field_values,
                         )
-                        if field_name == "term_deepseek_reasoning_effort":
-                            visible = visible and bool(
-                                term_detail_settings.term_deepseek_thinking_enabled
-                            )
-                            value = value or "high"
+                        value = _gui_field_value(field, value)
                         updates.append(gr.update(value=value, visible=visible))
 
                 # Extra UI components at the end of ui_setting_controls

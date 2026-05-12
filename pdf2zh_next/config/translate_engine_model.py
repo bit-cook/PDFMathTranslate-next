@@ -195,11 +195,29 @@ class DeepSeekSettings(BaseModel):
     deepseek_enable_json_mode: bool | None = Field(
         default=None, description="Enable JSON mode for DeepSeek service"
     )
-    deepseek_thinking_enabled: bool | None = Field(
-        default=False, description="Enable thinking mode for DeepSeek v4 models"
+    deepseek_thinking_enabled: bool = Field(
+        default=False,
+        description="Force enable thinking mode for DeepSeek v4 models",
+    )
+    deepseek_thinking_disabled: bool = Field(
+        default=False,
+        description="Force disable thinking mode for DeepSeek v4 models",
     )
     deepseek_reasoning_effort: str | None = Field(
-        default=None, description="Reasoning effort for DeepSeek thinking mode (high/max)"
+        default=None,
+        description="Reasoning effort for DeepSeek thinking mode (high/max)",
+        json_schema_extra={
+            "gui": {
+                "widget": "dropdown",
+                "choices": ["high", "max"],
+                "default_on_show": "high",
+                "visible_when": {
+                    "field": "deepseek_thinking_enabled",
+                    "equals": True,
+                },
+                "preserve_current_value": True,
+            },
+        },
     )
 
     def validate_settings(self) -> None:
@@ -208,6 +226,10 @@ class DeepSeekSettings(BaseModel):
         self.deepseek_api_key = _clean_string(self.deepseek_api_key)
         self.deepseek_model = _clean_string(self.deepseek_model)
         self.deepseek_reasoning_effort = _clean_string(self.deepseek_reasoning_effort)
+        if self.deepseek_thinking_enabled and self.deepseek_thinking_disabled:
+            raise ValueError(
+                "DeepSeek thinking mode cannot be both enabled and disabled"
+            )
         if self.deepseek_reasoning_effort and self.deepseek_reasoning_effort not in (
             "high",
             "max",
@@ -222,11 +244,13 @@ class DeepSeekSettings(BaseModel):
             openai_enable_json_mode=self.deepseek_enable_json_mode,
         )
         if self.deepseek_model and self.deepseek_model.startswith("deepseek-v4-"):
-            thinking_type = "enabled" if self.deepseek_thinking_enabled else "disabled"
-            settings._openai_extra_body = {"thinking": {"type": thinking_type}}
-            if self.deepseek_thinking_enabled and self.deepseek_reasoning_effort:
-                settings.openai_reasoning_effort = self.deepseek_reasoning_effort
-                settings.openai_send_reasoning_effort = True
+            if self.deepseek_thinking_enabled:
+                settings._openai_extra_body = {"thinking": {"type": "enabled"}}
+                if self.deepseek_reasoning_effort:
+                    settings.openai_reasoning_effort = self.deepseek_reasoning_effort
+                    settings.openai_send_reasoning_effort = True
+            elif self.deepseek_thinking_disabled:
+                settings._openai_extra_body = {"thinking": {"type": "disabled"}}
         return settings
 
 
@@ -1062,6 +1086,7 @@ def _build_term_setting_model(
                 default_factory=model_field.default_factory,
                 alias=model_field.alias,
                 discriminator=model_field.discriminator,
+                json_schema_extra=model_field.json_schema_extra,
             ),
         )
 

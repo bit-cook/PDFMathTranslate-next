@@ -46,14 +46,14 @@ class TestBuildArgsParser:
         assert "basic" in field_name2type
         assert "translation" in field_name2type
 
-    def test_deepseek_thinking_false_flag_is_explicit_cli_value(self):
-        """Test DeepSeek thinking can be explicitly disabled from CLI."""
+    def test_deepseek_thinking_disabled_flag_is_explicit_cli_value(self):
+        """Test DeepSeek thinking can be force-disabled from CLI."""
         parser, _ = build_args_parser()
 
-        args = parser.parse_args(["--deepseek", "--no-deepseek-thinking-enabled"])
+        args = parser.parse_args(["--deepseek", "--deepseek-thinking-disabled"])
 
         assert args.deepseek is True
-        assert args.deepseek_thinking_enabled is False
+        assert args.deepseek_thinking_disabled is True
 
     def test_deepseek_thinking_true_flag_is_explicit_cli_value(self):
         """Test DeepSeek thinking can be explicitly enabled from CLI."""
@@ -72,19 +72,22 @@ class TestBuildArgsParser:
 
         assert args.deepseek is True
         assert args.deepseek_thinking_enabled is MagicDefault
+        assert args.deepseek_thinking_disabled is MagicDefault
 
-    def test_deepseek_thinking_flags_are_mutually_exclusive(self):
-        """Test ambiguous DeepSeek thinking CLI flags are rejected."""
+    def test_deepseek_thinking_force_flags_can_be_set_from_cli(self):
+        """Test DeepSeek thinking force flags are exposed as config fields."""
         parser, _ = build_args_parser()
 
-        with pytest.raises(SystemExit):
-            parser.parse_args(
-                [
-                    "--deepseek",
-                    "--deepseek-thinking-enabled",
-                    "--no-deepseek-thinking-enabled",
-                ]
-            )
+        args = parser.parse_args(
+            [
+                "--deepseek",
+                "--deepseek-thinking-enabled",
+                "--deepseek-thinking-disabled",
+            ]
+        )
+
+        assert args.deepseek_thinking_enabled is True
+        assert args.deepseek_thinking_disabled is True
 
 
 class TestConfigManager:
@@ -174,14 +177,14 @@ class TestConfigManager:
         # Env settings should take precedence over defaults
         assert result["report_interval"] == 0.5
 
-    def test_deepseek_thinking_cli_false_overrides_env_true(
+    def test_deepseek_thinking_cli_disabled_preserved_with_env_enabled(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Test --no-deepseek-thinking-enabled overrides env true."""
+        """Test CLI force-disable remains explicit alongside env force-enable."""
         monkeypatch.setenv("PDF2ZH_DEEPSEEK_THINKING_ENABLED", "true")
         cm = ConfigManager()
         parser, _ = build_args_parser()
-        args = parser.parse_args(["--deepseek", "--no-deepseek-thinking-enabled"])
+        args = parser.parse_args(["--deepseek", "--deepseek-thinking-disabled"])
         cli_args = {
             k.replace("-", "_"): v
             for k, v in vars(args).items()
@@ -192,7 +195,8 @@ class TestConfigManager:
             [cm.parse_dict_vars(dict_vars=cli_args), cm.parse_env_vars()]
         )
 
-        assert merged["deepseek_detail"]["deepseek_thinking_enabled"] is False
+        assert merged["deepseek_detail"]["deepseek_thinking_enabled"] is True
+        assert merged["deepseek_detail"]["deepseek_thinking_disabled"] is True
 
     def test_deepseek_thinking_cli_omitted_preserves_env_true(
         self, monkeypatch: pytest.MonkeyPatch

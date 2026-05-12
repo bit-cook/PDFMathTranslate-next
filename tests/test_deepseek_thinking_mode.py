@@ -34,6 +34,7 @@ class FakeOpenAIClient:
 def build_deepseek_settings(
     model: str,
     thinking_enabled: bool = False,
+    thinking_disabled: bool = False,
     reasoning_effort: str | None = None,
 ) -> SettingsModel:
     settings = SettingsModel(
@@ -41,6 +42,7 @@ def build_deepseek_settings(
             deepseek_model=model,
             deepseek_api_key="dummy-key",
             deepseek_thinking_enabled=thinking_enabled,
+            deepseek_thinking_disabled=thinking_disabled,
             deepseek_reasoning_effort=reasoning_effort,
         )
     )
@@ -58,8 +60,23 @@ def build_translator(settings: SettingsModel) -> tuple[OpenAITranslator, FakeOpe
     return translator, fake_client
 
 
-def test_deepseek_v4_disabled_sends_extra_body_without_reasoning_effort():
+def test_deepseek_v4_unforced_omits_extra_body_and_reasoning_effort():
     settings = build_deepseek_settings("deepseek-v4-flash", thinking_enabled=False)
+    translator, fake_client = build_translator(settings)
+
+    translator.do_translate("hello")
+
+    request_kwargs = fake_client.completions.calls[0]
+    assert "extra_body" not in request_kwargs
+    assert "reasoning_effort" not in request_kwargs
+
+
+def test_deepseek_v4_disabled_sends_extra_body_without_reasoning_effort():
+    settings = build_deepseek_settings(
+        "deepseek-v4-flash",
+        thinking_disabled=True,
+        reasoning_effort="max",
+    )
     translator, fake_client = build_translator(settings)
 
     translator.do_translate("hello")
@@ -112,11 +129,17 @@ def test_deepseek_alias_models_do_not_send_extra_body_thinking():
 
 
 def test_deepseek_v4_cache_impact_distinguishes_thinking_modes():
-    disabled_settings = build_deepseek_settings("deepseek-v4-flash", False)
+    unforced_settings = build_deepseek_settings("deepseek-v4-flash")
+    disabled_settings = build_deepseek_settings(
+        "deepseek-v4-flash",
+        thinking_disabled=True,
+    )
     enabled_settings = build_deepseek_settings("deepseek-v4-flash", True)
+    unforced_translator, _ = build_translator(unforced_settings)
     disabled_translator, _ = build_translator(disabled_settings)
     enabled_translator, _ = build_translator(enabled_settings)
 
+    assert "extra_body" not in unforced_translator.cache.params
     assert disabled_translator.cache.params["extra_body"] == {
         "thinking": {"type": "disabled"}
     }
@@ -126,4 +149,8 @@ def test_deepseek_v4_cache_impact_distinguishes_thinking_modes():
     assert (
         disabled_translator.cache.translate_engine_params
         != enabled_translator.cache.translate_engine_params
+    )
+    assert (
+        unforced_translator.cache.translate_engine_params
+        != disabled_translator.cache.translate_engine_params
     )
