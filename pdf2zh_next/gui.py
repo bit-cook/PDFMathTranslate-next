@@ -2034,13 +2034,13 @@ custom_css = """
         padding: 12px !important;  /* 四周留白，确保文档不贴边 */
     }
     /* Gradio PDF 组件内部会渲染一个“BlockLabel”（data-testid="block-label"），
-       默认文案是 “File”。我们右侧已经有上方标题，因此这里把它隐藏，
+       默认文案是“File”。我们右侧已经有上方标题，因此这里把它隐藏，
        避免在 flex 居中布局下漂到左列按钮附近。 */
     .pdf-preview-fixed [data-testid="block-label"] {
         display: none !important;
     }
 
-    /* PDF容器：确保内容完全适配 */
+    /* PDF 容器：确保内容完全适配 */
     .pdf-preview-fixed .pdf-canvas {
         width: 100% !important;
         height: 100% !important;
@@ -2064,7 +2064,7 @@ custom_css = """
         object-fit: contain !important;  /* 确保完整显示，不被裁剪 */
     }
 
-    /* Canvas元素特殊处理：确保完全适配容器高度 */
+    /* Canvas 元素特殊处理：确保完全适配容器高度 */
     .pdf-preview-fixed canvas {
         max-height: calc(100% - 24px) !important;  /* 减去上下 padding (12px * 2) */
         max-width: calc(100% - 24px) !important;  /* 减去左右 padding */
@@ -2072,26 +2072,26 @@ custom_css = """
         width: auto !important;
         display: block !important;
         margin: 0 auto !important;
-        /* Canvas不支持object-fit，需要通过JS动态缩放，但CSS确保不超出边界 */
+        /* Canvas 不支持 object-fit，需要通过 JS 动态缩放，但 CSS 确保不超出边界 */
         background: #ffffff !important;  /* 浅色模式下保持白色 */
         position: relative !important;
     }
 
-    /* 深色模式下PDF预览区域背景保持深色 */
+    /* 深色模式下 PDF 预览区域背景保持深色 */
     .dark .pdf-preview-fixed,
     [data-theme="dark"] .pdf-preview-fixed,
     body.dark .pdf-preview-fixed {
         background: var(--block-background-fill, #1e1e1e) !important;
     }
 
-    /* 深色模式下PDF容器背景保持透明，让深色背景显示 */
+    /* 深色模式下 PDF 容器背景保持透明，让深色背景显示 */
     .dark .pdf-preview-fixed .pdf-canvas,
     [data-theme="dark"] .pdf-preview-fixed .pdf-canvas,
     body.dark .pdf-preview-fixed .pdf-canvas {
         background: transparent !important;
     }
 
-    /* 深色模式下PDF canvas使用柔和的浅灰色背景，不那么突兀 */
+    /* 深色模式下 PDF canvas 使用柔和的浅灰色背景，不那么突兀 */
     .dark .pdf-preview-fixed canvas,
     [data-theme="dark"] .pdf-preview-fixed canvas,
     body.dark .pdf-preview-fixed canvas {
@@ -2099,10 +2099,10 @@ custom_css = """
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;  /* 更柔和的阴影和边框 */
         border-radius: 4px !important;  /* 圆角使过渡更自然 */
         padding: 8px !important;  /* 内边距让背景稍微大一点 */
-        box-sizing: content-box !important;  /* 确保padding不影响canvas大小 */
+        box-sizing: content-box !important;  /* 确保 padding 不影响 canvas 大小 */
     }
 
-    /* 深色模式下iframe和embed使用相同处理 */
+    /* 深色模式下 iframe 和 embed 使用相同处理 */
     .dark .pdf-preview-fixed iframe,
     .dark .pdf-preview-fixed embed,
     [data-theme="dark"] .pdf-preview-fixed iframe,
@@ -2114,7 +2114,7 @@ custom_css = """
         border-radius: 4px !important;
     }
 
-    /* 确保PDF渲染容器在深色模式下背景透明 */
+    /* 确保 PDF 渲染容器在深色模式下背景透明 */
     .dark .pdf-preview-fixed > div,
     .dark .pdf-preview-fixed > div > div,
     [data-theme="dark"] .pdf-preview-fixed > div,
@@ -2133,24 +2133,24 @@ custom_css = """
         border-radius: 4px !important;
     }
 
-    /* 确保PDF文本层在深色模式下可见 */
+    /* 确保 PDF 文本层在深色模式下可见 */
     .pdf-preview-fixed .textLayer {
         mix-blend-mode: normal !important;
     }
 
-    /* 深色模式下PDF注释层 */
+    /* 深色模式下 PDF 注释层 */
     .pdf-preview-fixed .annotationLayer {
         background: transparent !important;
     }
 
-    /* 为PDF canvas添加一个包装器，用于精确控制背景大小 */
+    /* 为 PDF canvas 添加一个包装器，用于精确控制背景大小 */
     .pdf-preview-fixed .pdf-canvas-wrapper {
         display: inline-block !important;
         background: transparent !important;
         position: relative !important;
     }
 
-    /* 深色模式下canvas包装器背景 */
+    /* 深色模式下 canvas 包装器背景 */
     .dark .pdf-preview-fixed .pdf-canvas-wrapper,
     [data-theme="dark"] .pdf-preview-fixed .pdf-canvas-wrapper,
     body.dark .pdf-preview-fixed .pdf-canvas-wrapper {
@@ -2235,10 +2235,10 @@ custom_css = """
         /* 隐藏原生上下小箭头，避免误导 */
         -moz-appearance: textfield !important;
     }
-    /* 点击后（focus状态）：显示半透明背景矩形 */
+    /* 点击后（focus 状态）：显示半透明背景矩形 */
     .pdf-preview-fixed .button-row .page-count input[type="number"]:focus {
         background: rgba(255, 255, 255, 0.15) !important;  /* 半透明白色背景，提示可编辑 */
-        outline: none !important;  /* 去掉默认的浏览器focus outline */
+        outline: none !important;  /* 去掉默认的浏览器 focus outline */
     }
     .pdf-preview-fixed .button-row .page-count input[type="number"]::-webkit-inner-spin-button,
     .pdf-preview-fixed .button-row .page-count input[type="number"]::-webkit-outer-spin-button {
@@ -2268,7 +2268,7 @@ custom_css = """
 
     /* 设置界面：限制最大宽度并左对齐，使界面更美观 */
     .settings-container {
-        max-width: min(900px, 85vw) !important;  /* 最大900px，小屏幕时不超过85%视口宽度 */
+        max-width: min(900px, 85vw) !important;  /* 最大 900px，小屏幕时不超过 85% 视口宽度 */
         margin: 0 !important;                     /* 左对齐，不居中 */
         padding-left: 20px !important;            /* 左侧留白 */
         padding-right: 0 !important;              /* 右侧不留白，让内容自然延伸 */
@@ -2486,7 +2486,7 @@ with gr.Blocks(
 
                         with gr.Column(scale=2):
                             gr.Markdown(_("## Preview"), elem_classes=["tab-title"])
-                            # 结果选择+预览
+                            # 结果选择 + 预览
                             result_file_selector = gr.Dropdown(
                                 label=_("Select File to Preview/Download"),
                                 choices=[],
@@ -2494,7 +2494,7 @@ with gr.Blocks(
                                 visible=True,
                                 interactive=True,
                             )
-                            # 预览区域上方已经有 “## Preview” 标题，这里关闭组件自带 label，
+                            # 预览区域上方已经有“## Preview”标题，这里关闭组件自带 label，
                             # 避免 Gradio 的标签卡片在布局调整后漂到左侧中间
                             preview = PDF(
                                 label=None,
@@ -4051,7 +4051,7 @@ with gr.Blocks(
             outputs=[result_file_selector],
         )
 
-        # JavaScript: 动态调整PDF canvas缩放，确保完全适配容器高度
+        # JavaScript: 动态调整 PDF canvas 缩放，确保完全适配容器高度
         # 使用兼容性更好的语法，避免 ES6 特性导致解析错误
         demo.load(
             None,
@@ -4157,7 +4157,7 @@ with gr.Blocks(
                     canvas.style.maxWidth = '100%';
                     canvas.style.maxHeight = '100%';
                     
-                    // 深色模式下：为canvas添加包装器，使背景大小精确匹配PDF内容
+                    // 深色模式下：为 canvas 添加包装器，使背景大小精确匹配 PDF 内容
                     var bodyStyle = window.getComputedStyle(document.body);
                     var bgColor = bodyStyle.backgroundColor;
                     var isDarkMode = document.body.classList.contains('dark') || 
@@ -4182,7 +4182,7 @@ with gr.Blocks(
                             newWrapper.appendChild(canvas);
                             wrapper = newWrapper;
                         } else if (wrapper === container || !wrapper.classList.contains('pdf-canvas-wrapper')) {
-                            // 如果canvas直接是container的子元素，创建包装器
+                            // 如果 canvas 直接是 container 的子元素，创建包装器
                             var newWrapper = document.createElement('div');
                             newWrapper.className = 'pdf-canvas-wrapper';
                             container.insertBefore(newWrapper, canvas);
@@ -4190,7 +4190,7 @@ with gr.Blocks(
                             wrapper = newWrapper;
                         }
                         
-                        // 设置包装器大小，稍微大一点以包含padding和阴影
+                        // 设置包装器大小，稍微大一点以包含 padding 和阴影
                         if (wrapper && wrapper.classList.contains('pdf-canvas-wrapper')) {
                             wrapper.style.width = (scaledWidth + 16) + 'px';  // 8px padding * 2
                             wrapper.style.height = (scaledHeight + 16) + 'px';
@@ -4200,7 +4200,7 @@ with gr.Blocks(
                             wrapper.style.display = 'inline-block';
                         }
                         
-                        // 确保canvas本身没有额外的背景
+                        // 确保 canvas 本身没有额外的背景
                         canvas.style.background = 'transparent';
                     } else {
                         // 浅色模式下移除包装器样式
