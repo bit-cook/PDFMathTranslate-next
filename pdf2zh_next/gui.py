@@ -65,6 +65,10 @@ def _field_gui_extra(field) -> dict:
     return (field.json_schema_extra or {}).get("gui", {})
 
 
+def _type_hint_allows_none(type_hint: typing.Any) -> bool:
+    return type(None) in typing.get_args(type_hint)
+
+
 def _gui_dependency_field_name(field_name: str, dependency_field_name: str) -> str:
     if field_name.startswith("term_") and not dependency_field_name.startswith("term_"):
         return f"term_{dependency_field_name}"
@@ -751,13 +755,17 @@ def _build_translate_settings(
                 if field_name in ("translate_engine_type", "support_llm"):
                     continue
 
-                value = ui_inputs.get(field_name)
-                if value is None:
+                if field_name not in ui_inputs:
                     continue
+                value = ui_inputs[field_name]
 
                 type_hint = field.annotation
-                original_type = typing.get_origin(type_hint)
                 type_args = typing.get_args(type_hint)
+
+                if value is None:
+                    if _type_hint_allows_none(type_hint):
+                        setattr(term_detail_settings, field_name, None)
+                    continue
 
                 if type_hint is str or str in type_args:
                     pass

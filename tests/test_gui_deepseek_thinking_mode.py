@@ -66,8 +66,7 @@ def _base_gui_inputs(**overrides):
         "deepseek_model": "deepseek-v4-flash",
         "deepseek_api_key": "dummy-key",
         "deepseek_enable_json_mode": False,
-        "deepseek_thinking_enabled": False,
-        "deepseek_thinking_disabled": False,
+        "deepseek_thinking_mode": None,
         "deepseek_reasoning_effort": "high",
     }
     inputs.update(overrides)
@@ -86,14 +85,19 @@ def _build_settings(tmp_path: Path, ui_inputs: dict, gui, save_mode=None):
     )
 
 
-def test_gui_deepseek_thinking_fields_declare_force_boolean_modes():
-    enabled_field = DeepSeekSettings.model_fields["deepseek_thinking_enabled"]
-    disabled_field = DeepSeekSettings.model_fields["deepseek_thinking_disabled"]
+def test_gui_deepseek_thinking_field_declares_mode_dropdown():
+    mode_field = DeepSeekSettings.model_fields["deepseek_thinking_mode"]
 
-    assert enabled_field.default is False
-    assert disabled_field.default is False
-    assert enabled_field.json_schema_extra is None
-    assert disabled_field.json_schema_extra is None
+    assert mode_field.default is None
+    assert mode_field.json_schema_extra["gui"] == {
+        "widget": "dropdown",
+        "choices": [
+            ("Unset", None),
+            ("enabled", "enabled"),
+            ("disabled", "disabled"),
+        ],
+        "preserve_current_value": True,
+    }
 
 
 def test_gui_deepseek_reasoning_effort_metadata_controls_visibility(monkeypatch):
@@ -105,8 +109,8 @@ def test_gui_deepseek_reasoning_effort_metadata_controls_visibility(monkeypatch)
         "choices": ["high", "max"],
         "default_on_show": "high",
         "visible_when": {
-            "field": "deepseek_thinking_enabled",
-            "equals": True,
+            "field": "deepseek_thinking_mode",
+            "equals": "enabled",
         },
         "preserve_current_value": True,
     }
@@ -114,13 +118,13 @@ def test_gui_deepseek_reasoning_effort_metadata_controls_visibility(monkeypatch)
         "deepseek_reasoning_effort",
         field,
         True,
-        {"deepseek_thinking_enabled": False},
+        {"deepseek_thinking_mode": "disabled"},
     ) is False
     assert gui._gui_field_visible(
         "deepseek_reasoning_effort",
         field,
         True,
-        {"deepseek_thinking_enabled": True},
+        {"deepseek_thinking_mode": "enabled"},
     ) is True
 
 
@@ -156,20 +160,20 @@ def test_term_deepseek_metadata_preserves_prefixed_visibility(monkeypatch):
     assert term_field.json_schema_extra["gui"]["widget"] == "dropdown"
     assert term_field.json_schema_extra["gui"]["choices"] == ["high", "max"]
     assert term_field.json_schema_extra["gui"]["visible_when"] == {
-        "field": "deepseek_thinking_enabled",
-        "equals": True,
+        "field": "deepseek_thinking_mode",
+        "equals": "enabled",
     }
     assert gui._gui_field_visible(
         "term_deepseek_reasoning_effort",
         term_field,
         True,
-        {"term_deepseek_thinking_enabled": False},
+        {"term_deepseek_thinking_mode": "disabled"},
     ) is False
     assert gui._gui_field_visible(
         "term_deepseek_reasoning_effort",
         term_field,
         True,
-        {"term_deepseek_thinking_enabled": True},
+        {"term_deepseek_thinking_mode": "enabled"},
     ) is True
 
 
@@ -179,8 +183,6 @@ def test_gui_unforced_deepseek_current_run_omits_thinking_body(tmp_path, monkeyp
     settings = _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_enabled=False,
-            deepseek_thinking_disabled=False,
             deepseek_reasoning_effort="max",
         ),
         gui,
@@ -197,7 +199,7 @@ def test_gui_disabled_deepseek_current_run_omits_reasoning_effort(tmp_path, monk
     settings = _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_disabled=True,
+            deepseek_thinking_mode="disabled",
             deepseek_reasoning_effort="max",
         ),
         gui,
@@ -216,7 +218,7 @@ def test_gui_enabled_deepseek_defaults_reasoning_effort_to_high(tmp_path, monkey
     settings = _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_enabled=True,
+            deepseek_thinking_mode="enabled",
             deepseek_reasoning_effort="high",
         ),
         gui,
@@ -235,7 +237,7 @@ def test_gui_enabled_deepseek_accepts_max_reasoning_effort(tmp_path, monkeypatch
     settings = _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_enabled=True,
+            deepseek_thinking_mode="enabled",
             deepseek_reasoning_effort="max",
         ),
         gui,
@@ -244,7 +246,7 @@ def test_gui_enabled_deepseek_accepts_max_reasoning_effort(tmp_path, monkeypatch
     assert settings.translate_engine_settings.openai_reasoning_effort == "max"
 
 
-def test_term_deepseek_uses_same_boolean_thinking_controls(tmp_path, monkeypatch):
+def test_term_deepseek_uses_same_thinking_mode_control(tmp_path, monkeypatch):
     gui = _gui(monkeypatch)
 
     settings = _build_settings(
@@ -254,8 +256,7 @@ def test_term_deepseek_uses_same_boolean_thinking_controls(tmp_path, monkeypatch
             term_deepseek_model="deepseek-v4-flash",
             term_deepseek_api_key="dummy-key",
             term_deepseek_enable_json_mode=False,
-            term_deepseek_thinking_enabled=True,
-            term_deepseek_thinking_disabled=False,
+            term_deepseek_thinking_mode="enabled",
             term_deepseek_reasoning_effort="max",
         ),
         gui,
@@ -278,8 +279,6 @@ def test_unforced_term_deepseek_omits_thinking_body(tmp_path, monkeypatch):
             term_deepseek_model="deepseek-v4-flash",
             term_deepseek_api_key="dummy-key",
             term_deepseek_enable_json_mode=False,
-            term_deepseek_thinking_enabled=False,
-            term_deepseek_thinking_disabled=False,
             term_deepseek_reasoning_effort="max",
         ),
         gui,
@@ -302,8 +301,7 @@ def test_disabled_term_deepseek_current_run_omits_reasoning_effort(
             term_deepseek_model="deepseek-v4-flash",
             term_deepseek_api_key="dummy-key",
             term_deepseek_enable_json_mode=False,
-            term_deepseek_thinking_enabled=False,
-            term_deepseek_thinking_disabled=True,
+            term_deepseek_thinking_mode="disabled",
             term_deepseek_reasoning_effort="max",
         ),
         gui,
@@ -334,14 +332,13 @@ def test_gui_config_save_persists_selected_deepseek_thinking_settings(
     _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_disabled=True,
+            deepseek_thinking_mode="disabled",
             deepseek_reasoning_effort="max",
             term_service="DeepSeek",
             term_deepseek_model="deepseek-v4-flash",
             term_deepseek_api_key="dummy-key",
             term_deepseek_enable_json_mode=False,
-            term_deepseek_thinking_enabled=True,
-            term_deepseek_thinking_disabled=False,
+            term_deepseek_thinking_mode="enabled",
             term_deepseek_reasoning_effort="high",
         ),
         gui,
@@ -349,11 +346,9 @@ def test_gui_config_save_persists_selected_deepseek_thinking_settings(
     )
 
     saved = captured["settings"]
-    assert saved.deepseek_detail.deepseek_thinking_enabled is False
-    assert saved.deepseek_detail.deepseek_thinking_disabled is True
+    assert saved.deepseek_detail.deepseek_thinking_mode == "disabled"
     assert saved.deepseek_detail.deepseek_reasoning_effort == "max"
-    assert saved.term_deepseek_detail.term_deepseek_thinking_enabled is True
-    assert saved.term_deepseek_detail.term_deepseek_thinking_disabled is False
+    assert saved.term_deepseek_detail.term_deepseek_thinking_mode == "enabled"
     assert saved.term_deepseek_detail.term_deepseek_reasoning_effort == "high"
 
 
@@ -375,14 +370,12 @@ def test_gui_config_save_preserves_disabled_deepseek_reasoning_effort(
     _build_settings(
         tmp_path,
         _base_gui_inputs(
-            deepseek_thinking_enabled=False,
             deepseek_reasoning_effort="max",
             term_service="DeepSeek",
             term_deepseek_model="deepseek-v4-flash",
             term_deepseek_api_key="dummy-key",
             term_deepseek_enable_json_mode=False,
-            term_deepseek_thinking_enabled=False,
-            term_deepseek_thinking_disabled=True,
+            term_deepseek_thinking_mode="disabled",
             term_deepseek_reasoning_effort="max",
         ),
         gui,
@@ -390,24 +383,96 @@ def test_gui_config_save_preserves_disabled_deepseek_reasoning_effort(
     )
 
     saved = captured["settings"]
-    assert saved.deepseek_detail.deepseek_thinking_enabled is False
-    assert saved.deepseek_detail.deepseek_thinking_disabled is False
+    assert saved.deepseek_detail.deepseek_thinking_mode is None
     assert saved.deepseek_detail.deepseek_reasoning_effort == "max"
-    assert saved.term_deepseek_detail.term_deepseek_thinking_enabled is False
-    assert saved.term_deepseek_detail.term_deepseek_thinking_disabled is True
+    assert saved.term_deepseek_detail.term_deepseek_thinking_mode == "disabled"
     assert saved.term_deepseek_detail.term_deepseek_reasoning_effort == "max"
 
 
-def test_deepseek_thinking_force_flags_are_mutually_exclusive():
+def test_gui_main_deepseek_can_clear_saved_thinking_mode(tmp_path, monkeypatch):
+    gui = _gui(monkeypatch)
+    base_settings = CLIEnvSettingsModel()
+    base_settings.deepseek_detail.deepseek_thinking_mode = "disabled"
+    base_settings.deepseek_detail.deepseek_reasoning_effort = "max"
+    input_pdf = tmp_path / "input.pdf"
+    input_pdf.write_bytes(b"%PDF-1.4\n")
+
+    settings = gui._build_translate_settings(
+        base_settings,
+        input_pdf,
+        tmp_path,
+        gui.SaveMode.never,
+        _base_gui_inputs(deepseek_thinking_mode=None),
+    )
+
+    assert settings.translate_engine_settings._openai_extra_body is None
+
+
+def test_gui_term_deepseek_can_clear_saved_thinking_mode(tmp_path, monkeypatch):
+    gui = _gui(monkeypatch)
+    base_settings = CLIEnvSettingsModel()
+    base_settings.term_deepseek_detail.term_deepseek_thinking_mode = "enabled"
+    base_settings.term_deepseek_detail.term_deepseek_reasoning_effort = "max"
+    input_pdf = tmp_path / "input.pdf"
+    input_pdf.write_bytes(b"%PDF-1.4\n")
+
+    settings = gui._build_translate_settings(
+        base_settings,
+        input_pdf,
+        tmp_path,
+        gui.SaveMode.never,
+        _base_gui_inputs(
+            term_service="DeepSeek",
+            term_deepseek_model="deepseek-v4-flash",
+            term_deepseek_api_key="dummy-key",
+            term_deepseek_enable_json_mode=False,
+            term_deepseek_thinking_mode=None,
+        ),
+    )
+
+    assert settings.term_extraction_engine_settings._openai_extra_body is None
+
+
+def test_gui_term_nullable_int_field_accepts_present_none(tmp_path, monkeypatch):
+    gui = _gui(monkeypatch)
+
+    settings = _build_settings(
+        tmp_path,
+        _base_gui_inputs(
+            term_service="Ollama",
+            term_num_predict=None,
+        ),
+        gui,
+    )
+
+    assert settings.term_extraction_engine_settings.num_predict is None
+
+
+def test_gui_term_nullable_bool_field_accepts_present_none(tmp_path, monkeypatch):
+    gui = _gui(monkeypatch)
+
+    settings = _build_settings(
+        tmp_path,
+        _base_gui_inputs(
+            term_service="OpenAI",
+            term_openai_api_key="dummy-key",
+            term_openai_send_reasoning_effort=None,
+        ),
+        gui,
+    )
+
+    assert settings.term_extraction_engine_settings.openai_send_reasoning_effort is None
+
+
+def test_deepseek_thinking_mode_rejects_unknown_value():
     settings = DeepSeekSettings(
         deepseek_api_key="dummy-key",
-        deepseek_thinking_enabled=True,
-        deepseek_thinking_disabled=True,
+        deepseek_thinking_mode="auto",
     )
 
     try:
         settings.validate_settings()
     except ValueError as exc:
-        assert str(exc) == "DeepSeek thinking mode cannot be both enabled and disabled"
+        assert str(exc) == "DeepSeek thinking mode must be enabled or disabled"
     else:
-        raise AssertionError("Expected mutually exclusive thinking flags to fail")
+        raise AssertionError("Expected unknown thinking mode to fail")
