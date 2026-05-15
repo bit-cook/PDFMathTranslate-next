@@ -59,6 +59,55 @@ def get_translation_dic(file_path: Path):
 __gui_service_arg_names = []
 __gui_term_service_arg_names = []
 LLM_support_index_map = {}
+
+
+def _field_gui_extra(field) -> dict:
+    return (field.json_schema_extra or {}).get("gui", {})
+
+
+def _type_hint_allows_none(type_hint: typing.Any) -> bool:
+    return type(None) in typing.get_args(type_hint)
+
+
+def _gui_dependency_field_name(field_name: str, dependency_field_name: str) -> str:
+    if field_name.startswith("term_") and not dependency_field_name.startswith("term_"):
+        return f"term_{dependency_field_name}"
+    return dependency_field_name
+
+
+def _gui_field_visible(
+    field_name: str,
+    field,
+    base_visible: bool,
+    field_values: dict[str, typing.Any],
+) -> bool:
+    gui_extra = _field_gui_extra(field)
+    visible_when = gui_extra.get("visible_when")
+    if not visible_when:
+        return base_visible
+    dependency_field_name = _gui_dependency_field_name(
+        field_name, visible_when["field"]
+    )
+    return base_visible and field_values.get(dependency_field_name) == visible_when["equals"]
+
+
+def _gui_field_value(field, value):
+    gui_extra = _field_gui_extra(field)
+    if value:
+        return value
+    return gui_extra.get("default_on_show", value)
+
+
+def _gui_field_update(field, visible: bool, current_value=None):
+    gui_extra = _field_gui_extra(field)
+    update_kwargs = {"visible": visible}
+    if "choices" in gui_extra:
+        update_kwargs["choices"] = gui_extra["choices"]
+    if "default_on_show" in gui_extra or gui_extra.get("preserve_current_value"):
+        update_kwargs["value"] = _gui_field_value(field, current_value)
+    return gr.update(**update_kwargs)
+
+
 # The following variables associate strings with specific languages
 lang_map = {
     "English": "en",
@@ -706,13 +755,17 @@ def _build_translate_settings(
                 if field_name in ("translate_engine_type", "support_llm"):
                     continue
 
-                value = ui_inputs.get(field_name)
-                if value is None:
+                if field_name not in ui_inputs:
                     continue
+                value = ui_inputs[field_name]
 
                 type_hint = field.annotation
-                original_type = typing.get_origin(type_hint)
                 type_args = typing.get_args(type_hint)
+
+                if value is None:
+                    if _type_hint_allows_none(type_hint):
+                        setattr(term_detail_settings, field_name, None)
+                    continue
 
                 if type_hint is str or str in type_args:
                     pass
@@ -1522,7 +1575,11 @@ def on_file_upload(files, state):
     Handle file upload event to populate the preview dropdown immediately.
     """
     if not files:
-        return gr.update(choices=[], value=None, visible=False), state
+        return (
+            gr.update(choices=[], value=None, visible=False),
+            state,
+            gr.update(value="", visible=False),
+        )
 
     # Initialize state if needed
     if not state:
@@ -1595,7 +1652,7 @@ def on_file_upload(files, state):
     )
 
 
-def on_file_clear(files, state):
+def on_file_clear(_files, state):
     """
     Handle file clear/delete event to clean up state and UI.
     When user clicks the X button on file input, this function removes uploaded files
@@ -2008,13 +2065,13 @@ custom_css = """
         padding: 12px !important;  /* 四周留白，确保文档不贴边 */
     }
     /* Gradio PDF 组件内部会渲染一个“BlockLabel”（data-testid="block-label"），
-       默认文案是 “File”。我们右侧已经有上方标题，因此这里把它隐藏，
+       默认文案是“File”。我们右侧已经有上方标题，因此这里把它隐藏，
        避免在 flex 居中布局下漂到左列按钮附近。 */
     .pdf-preview-fixed [data-testid="block-label"] {
         display: none !important;
     }
 
-    /* PDF容器：确保内容完全适配 */
+    /* PDF 容器：确保内容完全适配 */
     .pdf-preview-fixed .pdf-canvas {
         width: 100% !important;
         height: 100% !important;
@@ -2038,7 +2095,7 @@ custom_css = """
         object-fit: contain !important;  /* 确保完整显示，不被裁剪 */
     }
 
-    /* Canvas元素特殊处理：确保完全适配容器高度 */
+    /* Canvas 元素特殊处理：确保完全适配容器高度 */
     .pdf-preview-fixed canvas {
         max-height: calc(100% - 24px) !important;  /* 减去上下 padding (12px * 2) */
         max-width: calc(100% - 24px) !important;  /* 减去左右 padding */
@@ -2046,26 +2103,26 @@ custom_css = """
         width: auto !important;
         display: block !important;
         margin: 0 auto !important;
-        /* Canvas不支持object-fit，需要通过JS动态缩放，但CSS确保不超出边界 */
+        /* Canvas 不支持 object-fit，需要通过 JS 动态缩放，但 CSS 确保不超出边界 */
         background: #ffffff !important;  /* 浅色模式下保持白色 */
         position: relative !important;
     }
 
-    /* 深色模式下PDF预览区域背景保持深色 */
+    /* 深色模式下 PDF 预览区域背景保持深色 */
     .dark .pdf-preview-fixed,
     [data-theme="dark"] .pdf-preview-fixed,
     body.dark .pdf-preview-fixed {
         background: var(--block-background-fill, #1e1e1e) !important;
     }
 
-    /* 深色模式下PDF容器背景保持透明，让深色背景显示 */
+    /* 深色模式下 PDF 容器背景保持透明，让深色背景显示 */
     .dark .pdf-preview-fixed .pdf-canvas,
     [data-theme="dark"] .pdf-preview-fixed .pdf-canvas,
     body.dark .pdf-preview-fixed .pdf-canvas {
         background: transparent !important;
     }
 
-    /* 深色模式下PDF canvas使用柔和的浅灰色背景，不那么突兀 */
+    /* 深色模式下 PDF canvas 使用柔和的浅灰色背景，不那么突兀 */
     .dark .pdf-preview-fixed canvas,
     [data-theme="dark"] .pdf-preview-fixed canvas,
     body.dark .pdf-preview-fixed canvas {
@@ -2073,10 +2130,10 @@ custom_css = """
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;  /* 更柔和的阴影和边框 */
         border-radius: 4px !important;  /* 圆角使过渡更自然 */
         padding: 8px !important;  /* 内边距让背景稍微大一点 */
-        box-sizing: content-box !important;  /* 确保padding不影响canvas大小 */
+        box-sizing: content-box !important;  /* 确保 padding 不影响 canvas 大小 */
     }
 
-    /* 深色模式下iframe和embed使用相同处理 */
+    /* 深色模式下 iframe 和 embed 使用相同处理 */
     .dark .pdf-preview-fixed iframe,
     .dark .pdf-preview-fixed embed,
     [data-theme="dark"] .pdf-preview-fixed iframe,
@@ -2088,7 +2145,7 @@ custom_css = """
         border-radius: 4px !important;
     }
 
-    /* 确保PDF渲染容器在深色模式下背景透明 */
+    /* 确保 PDF 渲染容器在深色模式下背景透明 */
     .dark .pdf-preview-fixed > div,
     .dark .pdf-preview-fixed > div > div,
     [data-theme="dark"] .pdf-preview-fixed > div,
@@ -2107,24 +2164,24 @@ custom_css = """
         border-radius: 4px !important;
     }
 
-    /* 确保PDF文本层在深色模式下可见 */
+    /* 确保 PDF 文本层在深色模式下可见 */
     .pdf-preview-fixed .textLayer {
         mix-blend-mode: normal !important;
     }
 
-    /* 深色模式下PDF注释层 */
+    /* 深色模式下 PDF 注释层 */
     .pdf-preview-fixed .annotationLayer {
         background: transparent !important;
     }
 
-    /* 为PDF canvas添加一个包装器，用于精确控制背景大小 */
+    /* 为 PDF canvas 添加一个包装器，用于精确控制背景大小 */
     .pdf-preview-fixed .pdf-canvas-wrapper {
         display: inline-block !important;
         background: transparent !important;
         position: relative !important;
     }
 
-    /* 深色模式下canvas包装器背景 */
+    /* 深色模式下 canvas 包装器背景 */
     .dark .pdf-preview-fixed .pdf-canvas-wrapper,
     [data-theme="dark"] .pdf-preview-fixed .pdf-canvas-wrapper,
     body.dark .pdf-preview-fixed .pdf-canvas-wrapper {
@@ -2209,10 +2266,10 @@ custom_css = """
         /* 隐藏原生上下小箭头，避免误导 */
         -moz-appearance: textfield !important;
     }
-    /* 点击后（focus状态）：显示半透明背景矩形 */
+    /* 点击后（focus 状态）：显示半透明背景矩形 */
     .pdf-preview-fixed .button-row .page-count input[type="number"]:focus {
         background: rgba(255, 255, 255, 0.15) !important;  /* 半透明白色背景，提示可编辑 */
-        outline: none !important;  /* 去掉默认的浏览器focus outline */
+        outline: none !important;  /* 去掉默认的浏览器 focus outline */
     }
     .pdf-preview-fixed .button-row .page-count input[type="number"]::-webkit-inner-spin-button,
     .pdf-preview-fixed .button-row .page-count input[type="number"]::-webkit-outer-spin-button {
@@ -2242,7 +2299,7 @@ custom_css = """
 
     /* 设置界面：限制最大宽度并左对齐，使界面更美观 */
     .settings-container {
-        max-width: min(900px, 85vw) !important;  /* 最大900px，小屏幕时不超过85%视口宽度 */
+        max-width: min(900px, 85vw) !important;  /* 最大 900px，小屏幕时不超过 85% 视口宽度 */
         margin: 0 !important;                     /* 左对齐，不居中 */
         padding-left: 20px !important;            /* 左侧留白 */
         padding-right: 0 !important;              /* 右侧不留白，让内容自然延伸 */
@@ -2302,14 +2359,10 @@ assets_dir = current_dir / "assets"
 logo_path = assets_dir / "powered_by_siliconflow_light.png"
 translation_file_path = current_dir / "gui_translation.yaml"
 config_fake_pdf_path = DEFAULT_CONFIG_DIR / "config.fake.pdf"
-_base_dir = Path.cwd().resolve()
-_drive_root = Path(_base_dir.anchor) if _base_dir.anchor else _base_dir
 pdf_preview_allowed_paths = [
     logo_path,
     Path("pdf2zh_files").resolve(),  # translation outputs
     Path(tempfile.gettempdir()).resolve(),  # uploaded temp files
-    _base_dir,  # current working directory
-    _drive_root,  # drive root (Windows) or "/" (POSIX)
 ]
 
 if not config_fake_pdf_path.exists():
@@ -2351,9 +2404,17 @@ with gr.Blocks(
 
         translation_engine_arg_inputs = []
         detail_text_inputs = []
+        detail_text_input_field_names = []
+        detail_text_input_fields = []
+        detail_visibility_dependency_inputs = {}
+        detail_visibility_dependency_events = []
         require_llm_translator_inputs = []
         detail_text_input_index_map = {}
         term_detail_text_inputs = []
+        term_detail_text_input_field_names = []
+        term_detail_text_input_fields = []
+        term_detail_visibility_dependency_inputs = {}
+        term_detail_visibility_dependency_events = []
         term_detail_text_input_index_map = {}
         LLM_support_index_map.clear()
         with gr.Row(elem_classes=["tab-main-row"], equal_height=True):
@@ -2454,7 +2515,7 @@ with gr.Blocks(
 
                         with gr.Column(scale=2):
                             gr.Markdown(_("## Preview"), elem_classes=["tab-title"])
-                            # 结果选择+预览
+                            # 结果选择 + 预览
                             result_file_selector = gr.Dropdown(
                                 label=_("Select File to Preview/Download"),
                                 choices=[],
@@ -2462,7 +2523,7 @@ with gr.Blocks(
                                 visible=True,
                                 interactive=True,
                             )
-                            # 预览区域上方已经有 “## Preview” 标题，这里关闭组件自带 label，
+                            # 预览区域上方已经有“## Preview”标题，这里关闭组件自带 label，
                             # 避免 Gradio 的标签卡片在布局调整后漂到左侧中间
                             preview = PDF(
                                 label=None,
@@ -2530,7 +2591,26 @@ with gr.Blocks(
                                     original_type = typing.get_origin(type_hint)
                                     type_args = typing.get_args(type_hint)
                                     value = getattr(detail_settings, field_name)
-                                    if (
+                                    gui_extra = _field_gui_extra(field)
+                                    field_values = {
+                                        name: getattr(detail_settings, name)
+                                        for name in metadata.setting_model_type.model_fields
+                                    }
+                                    field_visible = _gui_field_visible(
+                                        field_name,
+                                        field,
+                                        visible,
+                                        field_values,
+                                    )
+                                    if gui_extra.get("widget") == "dropdown":
+                                        field_input = gr.Dropdown(
+                                            label=field.description,
+                                            choices=gui_extra["choices"],
+                                            value=_gui_field_value(field, value),
+                                            interactive=True,
+                                            visible=field_visible,
+                                        )
+                                    elif (
                                         type_hint is str
                                         or str in type_args
                                         or type_hint is int
@@ -2542,21 +2622,21 @@ with gr.Blocks(
                                                 value=value,
                                                 interactive=True,
                                                 type="password",
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
                                         else:
                                             field_input = gr.Textbox(
                                                 label=field.description,
                                                 value=value,
                                                 interactive=True,
-                                                visible=visible,
+                                                visible=field_visible,
                                             )
                                     elif type_hint is bool or bool in type_args:
                                         field_input = gr.Checkbox(
                                             label=field.description,
                                             value=value,
                                             interactive=True,
-                                            visible=visible,
+                                            visible=field_visible,
                                         )
                                     else:
                                         raise Exception(
@@ -2567,6 +2647,29 @@ with gr.Blocks(
                                     ].append(detail_index)
                                     detail_index += 1
                                     detail_text_inputs.append(field_input)
+                                    detail_text_input_field_names.append(field_name)
+                                    detail_text_input_fields.append(field)
+                                    visible_when = gui_extra.get("visible_when")
+                                    if visible_when:
+                                        dependency_field_name = _gui_dependency_field_name(
+                                            field_name, visible_when["field"]
+                                        )
+                                        dependency_input = (
+                                            detail_visibility_dependency_inputs.get(
+                                                dependency_field_name
+                                            )
+                                        )
+                                        if dependency_input is not None:
+                                            detail_visibility_dependency_events.append(
+                                                (
+                                                    metadata.translate_engine_type,
+                                                    field_name,
+                                                    field,
+                                                    dependency_input,
+                                                    field_input,
+                                                )
+                                            )
+                                    detail_visibility_dependency_inputs[field_name] = field_input
                                     __gui_service_arg_names.append(field_name)
                                     translation_engine_arg_inputs.append(field_input)
                     with gr.Group() as rate_limit_settings:
@@ -2710,8 +2813,27 @@ with gr.Blocks(
                                         original_type = typing.get_origin(type_hint)
                                         type_args = typing.get_args(type_hint)
                                         value = getattr(term_detail_settings, field_name)
+                                        gui_extra = _field_gui_extra(field)
+                                        term_field_values = {
+                                            name: getattr(term_detail_settings, name)
+                                            for name in term_metadata.term_setting_model_type.model_fields
+                                        }
+                                        field_visible = _gui_field_visible(
+                                            field_name,
+                                            field,
+                                            False,
+                                            term_field_values,
+                                        )
 
-                                        if (
+                                        if gui_extra.get("widget") == "dropdown":
+                                            field_input = gr.Dropdown(
+                                                label=field.description,
+                                                choices=gui_extra["choices"],
+                                                value=_gui_field_value(field, value),
+                                                interactive=True,
+                                                visible=field_visible,
+                                            )
+                                        elif (
                                             type_hint is str
                                             or str in type_args
                                             or type_hint is int
@@ -2723,21 +2845,21 @@ with gr.Blocks(
                                                     value=value,
                                                     interactive=True,
                                                     type="password",
-                                                    visible=False,
+                                                    visible=field_visible,
                                                 )
                                             else:
                                                 field_input = gr.Textbox(
                                                     label=field.description,
                                                     value=value,
                                                     interactive=True,
-                                                    visible=False,
+                                                    visible=field_visible,
                                                 )
                                         elif type_hint is bool or bool in type_args:
                                             field_input = gr.Checkbox(
                                                 label=field.description,
                                                 value=value,
                                                 interactive=True,
-                                                visible=False,
+                                                visible=field_visible,
                                             )
                                         else:
                                             raise Exception(
@@ -2749,6 +2871,29 @@ with gr.Blocks(
                                         ].append(term_detail_index)
                                         term_detail_index += 1
                                         term_detail_text_inputs.append(field_input)
+                                        term_detail_text_input_field_names.append(field_name)
+                                        term_detail_text_input_fields.append(field)
+                                        visible_when = gui_extra.get("visible_when")
+                                        if visible_when:
+                                            dependency_field_name = _gui_dependency_field_name(
+                                                field_name, visible_when["field"]
+                                            )
+                                            dependency_input = (
+                                                term_detail_visibility_dependency_inputs.get(
+                                                    dependency_field_name
+                                                )
+                                            )
+                                            if dependency_input is not None:
+                                                term_detail_visibility_dependency_events.append(
+                                                    (
+                                                        term_metadata.translate_engine_type,
+                                                        field_name,
+                                                        field,
+                                                        dependency_input,
+                                                        field_input,
+                                                    )
+                                                )
+                                        term_detail_visibility_dependency_inputs[field_name] = field_input
                                         __gui_term_service_arg_names.append(field_name)
                                         translation_engine_arg_inputs.append(field_input)
 
@@ -3135,11 +3280,14 @@ with gr.Blocks(
             """Update page input visibility based on selection"""
             return gr.update(visible=choice == "Range")
 
-        def on_select_service(service_name):
+        def on_select_service(service_name, *detail_values):
             """Update service-specific settings visibility"""
             if not detail_text_inputs:
                 return
             detail_group_index = detail_text_input_index_map.get(service_name, [])
+            detail_field_values = dict(
+                zip(detail_text_input_field_names, detail_values, strict=False)
+            )
             llm_support = LLM_support_index_map.get(service_name, False)
             siliconflow_free_acknowledgement_visible = service_name == "SiliconFlowFree"
             siliconflow_update = [
@@ -3161,11 +3309,42 @@ with gr.Blocks(
                     siliconflow_update
                     + glossary_updates
                     + [
-                        gr.update(visible=(i in detail_group_index))
+                        _gui_field_update(
+                            detail_text_input_fields[i],
+                            _gui_field_visible(
+                                detail_text_input_field_names[i],
+                                detail_text_input_fields[i],
+                                i in detail_group_index,
+                                detail_field_values,
+                            ),
+                            current_value=detail_field_values.get(
+                                detail_text_input_field_names[i]
+                            ),
+                        )
                         for i in range(len(detail_text_inputs))
                     ]
                 )
             return return_list
+
+        def make_detail_dependency_change_handler(service_type, field_name, field):
+            def on_dependency_change(dependency_value, service_name, current_value):
+                return _gui_field_update(
+                    field,
+                    _gui_field_visible(
+                        field_name,
+                        field,
+                        service_name == service_type,
+                        {
+                            _gui_dependency_field_name(
+                                field_name,
+                                _field_gui_extra(field)["visible_when"]["field"],
+                            ): dependency_value
+                        },
+                    ),
+                    current_value=current_value,
+                )
+
+            return on_dependency_change
 
         def on_enhance_compatibility_change(enhance_value):
             """Update skip_clean and disable_rich_text_translate when enhance_compatibility changes"""
@@ -3237,23 +3416,41 @@ with gr.Blocks(
                 gr.update(visible=custom_visible),
             ]
 
-        def on_term_service_change(term_service_name: str):
+        def on_term_service_change(term_service_name: str, *term_detail_values):
             """Update term engine-specific settings visibility"""
             if not term_detail_text_inputs:
                 return
             detail_group_index = term_detail_text_input_index_map.get(
                 term_service_name, []
             )
+            term_detail_field_values = dict(
+                zip(
+                    term_detail_text_input_field_names,
+                    term_detail_values,
+                    strict=False,
+                )
+            )
             if len(term_detail_text_inputs) == 1:
                 return [gr.update(visible=(0 in detail_group_index))]
             return [
-                gr.update(visible=(i in detail_group_index))
+                _gui_field_update(
+                    term_detail_text_input_fields[i],
+                    _gui_field_visible(
+                        term_detail_text_input_field_names[i],
+                        term_detail_text_input_fields[i],
+                        i in detail_group_index,
+                        term_detail_field_values,
+                    ),
+                    current_value=term_detail_field_values.get(
+                        term_detail_text_input_field_names[i]
+                    ),
+                )
                 for i in range(len(term_detail_text_inputs))
             ]
 
-        def on_service_change_with_rate_limit(mode, service_name):
+        def on_service_change_with_rate_limit(mode, service_name, *detail_values):
             """Expand original on_select_service with rate-limit-UI updated"""
-            original_updates = on_select_service(service_name)
+            original_updates = on_select_service(service_name, *detail_values)
 
             rate_limit_visible = service_name != "SiliconFlowFree"
 
@@ -3355,7 +3552,7 @@ with gr.Blocks(
 
         service.select(
             on_service_change_with_rate_limit,
-            [rate_limit_mode, service],
+            [rate_limit_mode, service] + detail_text_inputs,
             outputs=(
                 on_select_service_outputs
                 if len(on_select_service_outputs) > 0
@@ -3423,11 +3620,45 @@ with gr.Blocks(
         # Term service change handler
         term_service.change(
             on_term_service_change,
-            term_service,
+            [term_service] + term_detail_text_inputs,
             outputs=(
                 term_detail_text_inputs if len(term_detail_text_inputs) > 0 else None
             ),
         )
+
+        for (
+            service_type,
+            field_name,
+            field,
+            dependency_input,
+            dependent_input,
+        ) in detail_visibility_dependency_events:
+            dependency_input.change(
+                make_detail_dependency_change_handler(service_type, field_name, field),
+                [
+                    dependency_input,
+                    service,
+                    dependent_input,
+                ],
+                dependent_input,
+            )
+
+        for (
+            service_type,
+            field_name,
+            field,
+            dependency_input,
+            dependent_input,
+        ) in term_detail_visibility_dependency_events:
+            dependency_input.change(
+                make_detail_dependency_change_handler(service_type, field_name, field),
+                [
+                    dependency_input,
+                    term_service,
+                    dependent_input,
+                ],
+                dependent_input,
+            )
 
         # UI setting controls list (shared by translate_btn and save_btn)
         ui_setting_controls = [
@@ -3812,7 +4043,17 @@ with gr.Blocks(
                         ):
                             continue
                         value = getattr(detail_settings, field_name)
-                        visible = metadata.translate_engine_type == selected_service
+                        field_values = {
+                            name: getattr(detail_settings, name)
+                            for name in metadata.setting_model_type.model_fields
+                        }
+                        visible = _gui_field_visible(
+                            field_name,
+                            field,
+                            metadata.translate_engine_type == selected_service,
+                            field_values,
+                        )
+                        value = _gui_field_value(field, value)
                         updates.append(gr.update(value=value, visible=visible))
 
                 # Term extraction engine detail fields (ordered)
@@ -3844,9 +4085,17 @@ with gr.Blocks(
                             if base_name in GUI_PASSWORD_FIELDS:
                                 continue
                         value = getattr(term_detail_settings, field_name)
-                        visible = (
-                            term_metadata.translate_engine_type == selected_term_service
+                        term_field_values = {
+                            name: getattr(term_detail_settings, name)
+                            for name in term_metadata.term_setting_model_type.model_fields
+                        }
+                        visible = _gui_field_visible(
+                            field_name,
+                            field,
+                            term_metadata.translate_engine_type == selected_term_service,
+                            term_field_values,
                         )
+                        value = _gui_field_value(field, value)
                         updates.append(gr.update(value=value, visible=visible))
 
                 # Extra UI components at the end of ui_setting_controls
@@ -3901,7 +4150,7 @@ with gr.Blocks(
             outputs=[result_file_selector],
         )
 
-        # JavaScript: 动态调整PDF canvas缩放，确保完全适配容器高度
+        # JavaScript: 动态调整 PDF canvas 缩放，确保完全适配容器高度
         # 使用兼容性更好的语法，避免 ES6 特性导致解析错误
         demo.load(
             None,
@@ -4007,7 +4256,7 @@ with gr.Blocks(
                     canvas.style.maxWidth = '100%';
                     canvas.style.maxHeight = '100%';
                     
-                    // 深色模式下：为canvas添加包装器，使背景大小精确匹配PDF内容
+                    // 深色模式下：为 canvas 添加包装器，使背景大小精确匹配 PDF 内容
                     var bodyStyle = window.getComputedStyle(document.body);
                     var bgColor = bodyStyle.backgroundColor;
                     var isDarkMode = document.body.classList.contains('dark') || 
@@ -4032,7 +4281,7 @@ with gr.Blocks(
                             newWrapper.appendChild(canvas);
                             wrapper = newWrapper;
                         } else if (wrapper === container || !wrapper.classList.contains('pdf-canvas-wrapper')) {
-                            // 如果canvas直接是container的子元素，创建包装器
+                            // 如果 canvas 直接是 container 的子元素，创建包装器
                             var newWrapper = document.createElement('div');
                             newWrapper.className = 'pdf-canvas-wrapper';
                             container.insertBefore(newWrapper, canvas);
@@ -4040,7 +4289,7 @@ with gr.Blocks(
                             wrapper = newWrapper;
                         }
                         
-                        // 设置包装器大小，稍微大一点以包含padding和阴影
+                        // 设置包装器大小，稍微大一点以包含 padding 和阴影
                         if (wrapper && wrapper.classList.contains('pdf-canvas-wrapper')) {
                             wrapper.style.width = (scaledWidth + 16) + 'px';  // 8px padding * 2
                             wrapper.style.height = (scaledHeight + 16) + 'px';
@@ -4050,7 +4299,7 @@ with gr.Blocks(
                             wrapper.style.display = 'inline-block';
                         }
                         
-                        // 确保canvas本身没有额外的背景
+                        // 确保 canvas 本身没有额外的背景
                         canvas.style.background = 'transparent';
                     } else {
                         // 浅色模式下移除包装器样式
