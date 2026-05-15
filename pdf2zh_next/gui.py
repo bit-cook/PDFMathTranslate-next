@@ -1575,7 +1575,11 @@ def on_file_upload(files, state):
     Handle file upload event to populate the preview dropdown immediately.
     """
     if not files:
-        return gr.update(choices=[], value=None, visible=False), state
+        return (
+            gr.update(choices=[], value=None, visible=False),
+            state,
+            gr.update(value="", visible=False),
+        )
 
     # Initialize state if needed
     if not state:
@@ -2355,14 +2359,10 @@ assets_dir = current_dir / "assets"
 logo_path = assets_dir / "powered_by_siliconflow_light.png"
 translation_file_path = current_dir / "gui_translation.yaml"
 config_fake_pdf_path = DEFAULT_CONFIG_DIR / "config.fake.pdf"
-_base_dir = Path.cwd().resolve()
-_drive_root = Path(_base_dir.anchor) if _base_dir.anchor else _base_dir
 pdf_preview_allowed_paths = [
     logo_path,
     Path("pdf2zh_files").resolve(),  # translation outputs
     Path(tempfile.gettempdir()).resolve(),  # uploaded temp files
-    _base_dir,  # current working directory
-    _drive_root,  # drive root (Windows) or "/" (POSIX)
 ]
 
 if not config_fake_pdf_path.exists():
